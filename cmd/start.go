@@ -3,12 +3,12 @@ package cmd
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/common/version"
+	"github.com/spf13/cobra"
 	"log"
 	"net/http"
 	"prom-logstash-exporter/constants"
 	"prom-logstash-exporter/pkg/collector"
-
-	"github.com/spf13/cobra"
 )
 
 var startCmd = &cobra.Command{
@@ -26,6 +26,7 @@ func startExporter(logstashURL, listenAddress string) {
 		log.Fatalf("Cannot register a new collector: %v", err)
 	}
 	prometheus.MustRegister(logstashCollector)
+	prometheus.MustRegister(version.NewCollector("prom_logstash_exporter"))
 
 	http.Handle("/metrics", promhttp.Handler())
 	http.HandleFunc("/-/ping", func(w http.ResponseWriter, r *http.Request) {

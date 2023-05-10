@@ -5,68 +5,166 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"prom-logstash-exporter/constants"
+	"prom-logstash-exporter/pkg/collector/node_stats"
+	"prom-logstash-exporter/pkg/helpers"
+	"prom-logstash-exporter/pkg/restclient"
 	"sync"
-	"time"
 )
 
-type Collector interface {
-	Collect(ch chan<- prometheus.Metric) error
+type Collector struct {
+	logstashClient   *LogstashClient
+	metricsCollector *MetricsCollector
+	mutex            sync.Mutex
 }
 
-var scrapeDurations = prometheus.NewSummaryVec(
-	prometheus.SummaryOpts{
-		Namespace: constants.Namespace,
-		Subsystem: "exporter",
-		Name:      "scrape_duration_seconds",
-		Help:      "prom_logstash_exporter: Duration of a scrape job.",
-	},
-	[]string{"collector", "result"},
-)
-
-type LogstashCollector struct {
-	collectors map[string]Collector
-}
-
-func NewLogstashCollector(logstashEndpoint string) (*LogstashCollector, error) {
-	nodeInfoCollector, err := NewNodeInfoCollector(logstashEndpoint)
+func NewLogstashCollector(uri string) (*Collector, error) {
+	client, err := NewLogstashClient(uri)
 	if err != nil {
-		return nil, fmt.Errorf("cannot register a new collector: %v", err)
+		return nil, err
 	}
 
-	collectors := make(map[string]Collector)
-	collectors["info"] = nodeInfoCollector
+	metricsCollector := NewMetricsCollector()
 
-	return &LogstashCollector{collectors: collectors}, nil
+	return &Collector{
+		logstashClient:   client,
+		metricsCollector: metricsCollector,
+	}, nil
 }
 
-func (coll LogstashCollector) Describe(ch chan<- *prometheus.Desc) {
-	scrapeDurations.Describe(ch)
+func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
+	c.metricsCollector.Describe(ch)
 }
 
-func (coll LogstashCollector) Collect(ch chan<- prometheus.Metric) {
-	wg := &sync.WaitGroup{}
-	wg.Add(len(coll.collectors))
+func (c *Collector) Collect(ch chan<- prometheus.Metric) {
+	c.mutex.Lock() // Protect metrics from concurrent collects
+	defer c.mutex.Unlock()
 
-	for name, collector := range coll.collectors {
-		go coll.collectWith(name, collector, ch, wg)
-	}
-
-	wg.Wait()
-	scrapeDurations.Collect(ch)
+	up := c.logstashClient.PerformScrape(c.metricsCollector, ch)
+	c.metricsCollector.UpdateUp(up)
+	c.metricsCollector.Collect(ch)
 }
 
-func (coll LogstashCollector) collectWith(name string, c Collector, ch chan<- prometheus.Metric, wg *sync.WaitGroup) {
-	defer wg.Done()
+type LogstashClient struct {
+	handler restclient.HTTPHandlerInterface
+}
 
-	start := time.Now()
-	err := c.Collect(ch)
-	duration := time.Since(start)
-
+func NewLogstashClient(logstashURL string) (*LogstashClient, error) {
+	parsedURL, err := helpers.ParseURI(logstashURL)
 	if err != nil {
-		logrus.Errorf("ERROR: %s collector failed after %fs: %s", name, duration.Seconds(), err)
-		scrapeDurations.WithLabelValues(name, "error").Observe(duration.Seconds())
-	} else {
-		logrus.Debugf("OK: %s collector succeeded after %fs.", name, duration.Seconds())
-		scrapeDurations.WithLabelValues(name, "success").Observe(duration.Seconds())
+		return nil, err
 	}
+
+	handler := &restclient.HTTPHandler{
+		Endpoint: fmt.Sprintf("%s/%s", parsedURL, constants.StatsPath),
+	}
+
+	return &LogstashClient{
+		handler: handler,
+	}, nil
+}
+
+func (c *LogstashClient) PerformScrape(mc *MetricsCollector, ch chan<- prometheus.Metric) (up float64) {
+	mc.IncrementTotalScrapes()
+
+	var stats node_stats.NodeStats
+	err := restclient.GetMetrics(c.handler, &stats)
+	if err != nil {
+		logrus.WithError(err).Warnln("Can't scrape Logstash", constants.StatsPath)
+		return 0
+	}
+
+	mc.UpdateLogstashStatus(stats)
+	mc.UpdateLogstashInfo(stats, ch)
+	mc.UpdateJVM(stats.JVM, ch)
+
+	return 1
+}
+
+type MetricsCollector struct {
+	up                prometheus.Gauge
+	totalScrapes      prometheus.Counter
+	jsonParseFailures prometheus.Counter
+	logstashStatus    prometheus.Gauge
+	logstashInfo      *prometheus.Desc
+	jvm               *node_stats.JVMCollector
+}
+
+func NewMetricsCollector() *MetricsCollector {
+	return &MetricsCollector{
+		up: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: constants.Namespace,
+			Name:      "up",
+			Help:      "Was the last scrape of logstash successful.",
+		}),
+		totalScrapes: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: constants.Namespace,
+			Name:      "exporter_total_scrapes",
+			Help:      "Current total logstash scrapes.",
+		}),
+		jsonParseFailures: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: constants.Namespace,
+			Name:      "exporter_json_parse_failures",
+			Help:      "Number of errors while parsing JSON.",
+		}),
+		logstashStatus: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: constants.Namespace,
+			Name:      "status",
+			Help:      "Logstash status: 0 for Green; 1 for Yellow; 2 for Red.",
+		}),
+		logstashInfo: prometheus.NewDesc(
+			prometheus.BuildFQName(constants.Namespace, "", "info"),
+			"A metric with a constant '1' value labeled by version, http_address, name, id and ephemeral_id from Logstash instance.",
+			[]string{"version", "http_address", "name", "id", "ephemeral_id"},
+			nil,
+		),
+		jvm: node_stats.NewJVMCollector(),
+	}
+}
+
+func (mc *MetricsCollector) Describe(ch chan<- *prometheus.Desc) {
+	prometheus.DescribeByCollect(mc, ch)
+}
+
+func (mc *MetricsCollector) Collect(ch chan<- prometheus.Metric) {
+	ch <- mc.up
+	ch <- mc.totalScrapes
+	ch <- mc.jsonParseFailures
+	ch <- mc.logstashStatus
+}
+
+func (mc *MetricsCollector) UpdateUp(up float64) {
+	mc.up.Set(up)
+}
+
+func (mc *MetricsCollector) IncrementTotalScrapes() {
+	mc.totalScrapes.Inc()
+}
+
+func (mc *MetricsCollector) IncrementJsonParseFailures() {
+	mc.jsonParseFailures.Inc()
+}
+
+func (mc *MetricsCollector) UpdateLogstashStatus(stats node_stats.NodeStats) {
+	switch stats.Status {
+	case "green":
+		mc.logstashStatus.Set(0)
+	case "yellow":
+		mc.logstashStatus.Set(1)
+	default:
+		mc.logstashStatus.Set(2)
+	}
+}
+
+func (mc *MetricsCollector) UpdateLogstashInfo(stats node_stats.NodeStats, ch chan<- prometheus.Metric) {
+	ch <- prometheus.MustNewConstMetric(mc.logstashInfo, prometheus.GaugeValue, 1.0,
+		stats.Version,
+		stats.HttpAddress,
+		stats.Name,
+		stats.ID,
+		stats.EphemeralID,
+	)
+}
+
+func (mc *MetricsCollector) UpdateJVM(jvmStats node_stats.JVM, ch chan<- prometheus.Metric) {
+	mc.jvm.Collect(jvmStats, ch)
 }

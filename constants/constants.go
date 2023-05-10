@@ -9,4 +9,5 @@ var (
 
 const (
 	Namespace = "logstash"
+	StatsPath = "/_node/stats"
 )
