@@ -75,7 +75,9 @@ func (c *LogstashClient) PerformScrape(mc *MetricsCollector, ch chan<- prometheu
 
 	mc.UpdateLogstashStatus(stats)
 	mc.UpdateLogstashInfo(stats, ch)
-	mc.UpdateJVM(stats.JVM, ch)
+	mc.jvm.Collect(stats.JVM, ch)
+	mc.event.Collect(stats.Event, ch)
+	mc.process.Collect(stats.Process, ch)
 
 	return 1
 }
@@ -87,6 +89,8 @@ type MetricsCollector struct {
 	logstashStatus    prometheus.Gauge
 	logstashInfo      *prometheus.Desc
 	jvm               *node_stats.JVMCollector
+	event             *node_stats.EventCollector
+	process           *node_stats.ProcessCollector
 }
 
 func NewMetricsCollector() *MetricsCollector {
@@ -111,13 +115,10 @@ func NewMetricsCollector() *MetricsCollector {
 			Name:      "status",
 			Help:      "Logstash status: 0 for Green; 1 for Yellow; 2 for Red.",
 		}),
-		logstashInfo: prometheus.NewDesc(
-			prometheus.BuildFQName(constants.Namespace, "", "info"),
-			"A metric with a constant '1' value labeled by version, http_address, name, id and ephemeral_id from Logstash instance.",
-			[]string{"version", "http_address", "name", "id", "ephemeral_id"},
-			nil,
-		),
-		jvm: node_stats.NewJVMCollector(),
+		logstashInfo: prometheus.NewDesc(prometheus.BuildFQName(constants.Namespace, "", "info"), "A metric with a constant '1' value labeled by version, http_address, name, id and ephemeral_id from Logstash instance.", []string{"version", "http_address", "name", "id", "ephemeral_id"}, nil),
+		jvm:          node_stats.NewJVMCollector(),
+		event:        node_stats.NewEventCollector(),
+		process:      node_stats.NewProcessCollector(),
 	}
 }
 
@@ -156,15 +157,5 @@ func (mc *MetricsCollector) UpdateLogstashStatus(stats node_stats.NodeStats) {
 }
 
 func (mc *MetricsCollector) UpdateLogstashInfo(stats node_stats.NodeStats, ch chan<- prometheus.Metric) {
-	ch <- prometheus.MustNewConstMetric(mc.logstashInfo, prometheus.GaugeValue, 1.0,
-		stats.Version,
-		stats.HttpAddress,
-		stats.Name,
-		stats.ID,
-		stats.EphemeralID,
-	)
-}
-
-func (mc *MetricsCollector) UpdateJVM(jvmStats node_stats.JVM, ch chan<- prometheus.Metric) {
-	mc.jvm.Collect(jvmStats, ch)
+	ch <- prometheus.MustNewConstMetric(mc.logstashInfo, prometheus.GaugeValue, 1.0, stats.Version, stats.HttpAddress, stats.Name, stats.ID, stats.EphemeralID)
 }
