@@ -75,9 +75,13 @@ func (c *LogstashClient) PerformScrape(mc *MetricsCollector, ch chan<- prometheu
 
 	mc.UpdateLogstashStatus(stats)
 	mc.UpdateLogstashInfo(stats, ch)
+
 	mc.jvm.Collect(stats.JVM, ch)
 	mc.event.Collect(stats.Event, ch)
 	mc.process.Collect(stats.Process, ch)
+	mc.pipelines.Collect(stats.Pipelines, ch)
+	mc.pipelineConfig.Collect(stats.Pipeline, ch)
+	mc.reloadsConfig.Collect(stats.Reloads, ch)
 
 	return 1
 }
@@ -91,6 +95,9 @@ type MetricsCollector struct {
 	jvm               *node_stats.JVMCollector
 	event             *node_stats.EventCollector
 	process           *node_stats.ProcessCollector
+	pipelines         *node_stats.PipelinesCollector
+	pipelineConfig    *node_stats.PipelineConfigCollector
+	reloadsConfig     *node_stats.ReloadsConfigCollector
 }
 
 func NewMetricsCollector() *MetricsCollector {
@@ -115,10 +122,13 @@ func NewMetricsCollector() *MetricsCollector {
 			Name:      "status",
 			Help:      "Logstash status: 0 for Green; 1 for Yellow; 2 for Red.",
 		}),
-		logstashInfo: prometheus.NewDesc(prometheus.BuildFQName(constants.Namespace, "", "info"), "A metric with a constant '1' value labeled by version, http_address, name, id and ephemeral_id from Logstash instance.", []string{"version", "http_address", "name", "id", "ephemeral_id"}, nil),
-		jvm:          node_stats.NewJVMCollector(),
-		event:        node_stats.NewEventCollector(),
-		process:      node_stats.NewProcessCollector(),
+		logstashInfo:   prometheus.NewDesc(prometheus.BuildFQName(constants.Namespace, "", "info"), "A metric with a constant '1' value labeled by version, http_address, name, id and ephemeral_id from Logstash instance.", []string{"version", "http_address", "name", "id", "ephemeral_id"}, nil),
+		jvm:            node_stats.NewJVMCollector(),
+		event:          node_stats.NewEventCollector(),
+		process:        node_stats.NewProcessCollector(),
+		pipelines:      node_stats.NewPipelinesCollector(),
+		pipelineConfig: node_stats.NewPipelineConfigCollector(),
+		reloadsConfig:  node_stats.NewReloadsConfigCollector(),
 	}
 }
 
