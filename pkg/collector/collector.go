@@ -55,7 +55,7 @@ func NewLogstashClient(logstashURL string) (*LogstashClient, error) {
 	}
 
 	handler := &restclient.HTTPHandler{
-		Endpoint: fmt.Sprintf("%s/%s", parsedURL, constants.StatsPath),
+		Endpoint: fmt.Sprintf("%s%s", parsedURL, constants.StatsPath),
 	}
 
 	return &LogstashClient{
@@ -69,7 +69,8 @@ func (c *LogstashClient) PerformScrape(mc *MetricsCollector, ch chan<- prometheu
 	var stats node_stats.NodeStats
 	err := restclient.GetMetrics(c.handler, &stats)
 	if err != nil {
-		logrus.WithError(err).Warnln("Can't scrape Logstash", constants.StatsPath)
+		mc.logstashStatus.Set(2)
+		logrus.WithError(err).Errorln("Can't scrape Logstash", constants.StatsPath)
 		return 0
 	}
 
