@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"prom-logstash-exporter/constants"
 	"prom-logstash-exporter/pkg/collector"
+	"time"
 )
 
 var startCmd = &cobra.Command{
@@ -32,7 +33,19 @@ func startExporter(logstashURL, listenAddress string) {
 	http.HandleFunc("/-/ping", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	log.Printf("Starting Logstash exporter on %s...", listenAddress)
+
+	http.HandleFunc("/-/health", func(w http.ResponseWriter, r *http.Request) {
+		currentTime := time.Now().Format(time.RFC1123)
+		response := "OK - " + currentTime
+
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte(response))
+		if err != nil {
+			log.Printf("Health check write response error: %v", err)
+		}
+	})
+
+	log.Printf("Logstash exporter is running on %s...", listenAddress)
 
 	if err := http.ListenAndServe(listenAddress, nil); err != nil {
 		log.Fatalf("Error starting the HTTP server: %v", err)

@@ -3,8 +3,8 @@ package restclient
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -35,18 +35,16 @@ func GetMetrics(h HTTPHandlerInterface, target interface{}) error {
 	if err != nil {
 		return fmt.Errorf("failed to retrieve metrics data: %v", err)
 	}
-	defer closeResponseBody(response.Body)
+	defer func() {
+		if closeErr := response.Body.Close(); closeErr != nil {
+			logrus.Printf("Error closing response body: %v", closeErr)
+		}
+	}()
 
 	if err := json.NewDecoder(response.Body).Decode(target); err != nil {
 		return fmt.Errorf("failed to decode metrics data: %v", err)
 	}
 
+	logrus.Println("Successfully retrieved and decoded metrics data at.", time.Now())
 	return nil
-}
-
-func closeResponseBody(body io.ReadCloser) {
-	err := body.Close()
-	if err != nil {
-		logrus.Errorf("cannot close response body: %v", err)
-	}
 }
