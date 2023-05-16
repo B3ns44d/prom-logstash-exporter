@@ -130,7 +130,13 @@ type FilterPlugin struct {
 }
 
 type OutputPlugin struct {
-	ID     string       `json:"id"`
-	Name   string       `json:"name"`
-	Events PluginEvents `json:"events"`
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Events    PluginEvents    `json:"events"`
+	Documents DocumentsEvents `json:"documents"`
+}
+
+type DocumentsEvents struct {
+	Successes            int `json:"successes"`
+	NonRetryableFailures int `json:"non_retryable_failures,omitempty"`
 }

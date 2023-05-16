@@ -22,9 +22,11 @@ type PipelinesCollector struct {
 	FilterIn       *prometheus.Desc
 	FilterOut      *prometheus.Desc
 
-	OutputDuration *prometheus.Desc
-	OutputIn       *prometheus.Desc
-	OutputOut      *prometheus.Desc
+	OutputDuration             *prometheus.Desc
+	OutputIn                   *prometheus.Desc
+	OutputOut                  *prometheus.Desc
+	OutputSuccesses            *prometheus.Desc
+	OutputNonRetryableFailures *prometheus.Desc
 
 	EventsCount  *prometheus.Desc
 	QueueSize    *prometheus.Desc
@@ -48,9 +50,11 @@ func NewPipelinesCollector() *PipelinesCollector {
 		FilterIn:       desc("filter_in_total", "The total number of events in.", "pipeline", "id", "name", "index"),
 		FilterOut:      desc("filter_out_total", "The total number of events out.", "pipeline", "id", "name", "index"),
 
-		OutputDuration: desc("output_duration_seconds_total", "The total process duration time in seconds", "pipeline", "id", "name"),
-		OutputIn:       desc("output_in_total", "The total number of events in.", "pipeline", "id", "name"),
-		OutputOut:      desc("output_out_total", "The total number of events out.", "pipeline", "id", "name"),
+		OutputDuration:             desc("output_duration_seconds_total", "The total process duration time in seconds", "pipeline", "id", "name"),
+		OutputIn:                   desc("output_in_total", "The total number of events in.", "pipeline", "id", "name"),
+		OutputOut:                  desc("output_out_total", "The total number of events out.", "pipeline", "id", "name"),
+		OutputSuccesses:            desc("output_successes_total", "The total number of successful outputs.", "pipeline", "id", "name"),
+		OutputNonRetryableFailures: desc("output_non_retryable_failures_total", "The total number of non-retryable output failures.", "pipeline", "id", "name"),
 
 		EventsCount:  desc("queue_event_count", "The current events in queue.", "pipeline", "queue_type"),
 		QueueSize:    desc("queue_size_bytes", "The current queue size in bytes.", "pipeline", "queue_type"),
@@ -110,6 +114,8 @@ func (c *PipelinesCollector) collectMetricsForPipeline(pipelineName string, p Pi
 			pipelineMetricData{c.OutputDuration, prometheus.CounterValue, float64(plugin.Events.DurationInMillis) / 1000.0, []string{pipelineName, plugin.ID, plugin.Name}},
 			pipelineMetricData{c.OutputIn, prometheus.CounterValue, float64(plugin.Events.In), []string{pipelineName, plugin.ID, plugin.Name}},
 			pipelineMetricData{c.OutputOut, prometheus.CounterValue, float64(plugin.Events.Out), []string{pipelineName, plugin.ID, plugin.Name}},
+			pipelineMetricData{c.OutputSuccesses, prometheus.CounterValue, float64(plugin.Documents.Successes), []string{pipelineName, plugin.ID, plugin.Name}},
+			pipelineMetricData{c.OutputNonRetryableFailures, prometheus.CounterValue, float64(plugin.Documents.NonRetryableFailures), []string{pipelineName, plugin.ID, plugin.Name}},
 		)
 	}
 
