@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"encoding/json"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/version"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"log"
 	"net/http"
@@ -24,7 +26,7 @@ var startCmd = &cobra.Command{
 func startExporter(logstashURL, listenAddress string) {
 	logstashCollector, err := collector.NewLogstashCollector(logstashURL)
 	if err != nil {
-		log.Fatalf("Cannot register a new collector: %v", err)
+		logrus.Fatalf("Cannot register a new collector: %v", err)
 	}
 	prometheus.MustRegister(logstashCollector)
 	prometheus.MustRegister(version.NewCollector("prom_logstash_exporter"))
@@ -35,20 +37,26 @@ func startExporter(logstashURL, listenAddress string) {
 	})
 
 	http.HandleFunc("/-/health", func(w http.ResponseWriter, r *http.Request) {
-		currentTime := time.Now().Format(time.RFC1123)
-		response := "OK - " + currentTime
+		currentTime := time.Now()
+		response := constants.HealthResponse{
+			Status: "OK",
+			Time:   currentTime,
+		}
 
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, err := w.Write([]byte(response))
+
+		err := json.NewEncoder(w).Encode(response)
 		if err != nil {
 			log.Printf("Health check write response error: %v", err)
 		}
 	})
 
-	log.Printf("Logstash exporter is running on %s...", listenAddress)
+	logrus.Info("prom-logstash-exporter version: ", constants.Version)
+	logrus.Printf("Logstash exporter is running on %s...", listenAddress)
 
 	if err := http.ListenAndServe(listenAddress, nil); err != nil {
-		log.Fatalf("Error starting the HTTP server: %v", err)
+		logrus.Fatalf("Error starting the HTTP server: %v", err)
 	}
 }
 
