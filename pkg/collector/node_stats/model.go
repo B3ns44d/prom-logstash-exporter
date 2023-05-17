@@ -106,7 +106,21 @@ type Pipeline struct {
 		EventsCount         int    `json:"events_count"`
 		QueueSizeInBytes    int    `json:"queue_size_in_bytes"`
 		MaxQueueSizeInBytes int    `json:"max_queue_size_in_bytes"`
+		Capacity            struct {
+			MaxUnreadEvents     int   `json:"max_unread_events"`
+			MaxQueueSizeInBytes int64 `json:"max_queue_size_in_bytes"`
+			PageCapacityInBytes int   `json:"page_capacity_in_bytes"`
+			QueueSizeInBytes    int   `json:"queue_size_in_bytes"`
+		} `json:"capacity"`
 	} `json:"queue"`
+	DeadLetterQueue struct {
+		DroppedEvents       int    `json:"dropped_events"`
+		MaxQueueSizeInBytes int64  `json:"max_queue_size_in_bytes"`
+		LastError           string `json:"last_error"`
+		StoragePolicy       string `json:"storage_policy"`
+		ExpiredEvents       int    `json:"expired_events"`
+		QueueSizeInBytes    int    `json:"queue_size_in_bytes"`
+	} `json:"dead_letter_queue"`
 }
 
 type PluginEvents struct {

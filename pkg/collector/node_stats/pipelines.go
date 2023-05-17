@@ -31,6 +31,16 @@ type PipelinesCollector struct {
 	EventsCount  *prometheus.Desc
 	QueueSize    *prometheus.Desc
 	MaxQueueSize *prometheus.Desc
+
+	CapacityMaxUnreadEvents     *prometheus.Desc
+	CapacityMaxQueueSizeInBytes *prometheus.Desc
+	CapacityPageCapacityInBytes *prometheus.Desc
+	CapacityQueueSizeInBytes    *prometheus.Desc
+
+	//DeadLetterQueue
+	DroppedEvents              *prometheus.Desc
+	MaxQueueSizeInBytes        *prometheus.Desc
+	DeadLetterQueueSizeInBytes *prometheus.Desc
 }
 
 func NewPipelinesCollector() *PipelinesCollector {
@@ -59,6 +69,15 @@ func NewPipelinesCollector() *PipelinesCollector {
 		EventsCount:  desc("queue_event_count", "The current events in queue.", "pipeline", "queue_type"),
 		QueueSize:    desc("queue_size_bytes", "The current queue size in bytes.", "pipeline", "queue_type"),
 		MaxQueueSize: desc("queue_max_size_bytes", "The max queue size in bytes.", "pipeline", "queue_type"),
+
+		CapacityMaxUnreadEvents:     desc("capacity_max_unread_events", "The maximum number of unread events in capacity.", "pipeline", "queue_type"),
+		CapacityMaxQueueSizeInBytes: desc("capacity_max_queue_size_bytes", "The maximum size of the capacity queue in bytes.", "pipeline", "queue_type"),
+		CapacityPageCapacityInBytes: desc("page_capacity_bytes", "The capacity of a single page in bytes.", "pipeline", "queue_type"),
+		CapacityQueueSizeInBytes:    desc("capacity_queue_size_bytes", "The current size of the queue capacity in bytes.", "pipeline", "queue_type"),
+
+		DroppedEvents:              desc("dropped_events_total", "The total number of dropped events in the dead letter queue.", "pipeline"),
+		MaxQueueSizeInBytes:        desc("max_queue_size_bytes", "The maximum size of the dead letter queue in bytes.", "pipeline"),
+		DeadLetterQueueSizeInBytes: desc("dead_letter_queue_size_bytes", "The current size of the dead letter queue in bytes.", "pipeline"),
 	}
 }
 
@@ -88,8 +107,17 @@ func (c *PipelinesCollector) collectMetricsForPipeline(pipelineName string, p Pi
 		{c.EventsCount, prometheus.GaugeValue, float64(p.Queue.EventsCount), []string{pipelineName, p.Queue.Type}},
 		{c.QueueSize, prometheus.CounterValue, float64(p.Queue.QueueSizeInBytes), []string{pipelineName, p.Queue.Type}},
 		{c.MaxQueueSize, prometheus.CounterValue, float64(p.Queue.MaxQueueSizeInBytes), []string{pipelineName, p.Queue.Type}},
+		{c.CapacityMaxUnreadEvents, prometheus.CounterValue, float64(p.Queue.Capacity.MaxUnreadEvents), []string{pipelineName, p.Queue.Type}},
+		{c.CapacityMaxQueueSizeInBytes, prometheus.CounterValue, float64(p.Queue.Capacity.MaxQueueSizeInBytes), []string{pipelineName, p.Queue.Type}},
+		{c.CapacityPageCapacityInBytes, prometheus.CounterValue, float64(p.Queue.Capacity.PageCapacityInBytes), []string{pipelineName, p.Queue.Type}},
+		{c.CapacityQueueSizeInBytes, prometheus.CounterValue, float64(p.Queue.Capacity.QueueSizeInBytes), []string{pipelineName, p.Queue.Type}},
 	}
 
+	deadLetterQueueMetrics := []pipelineMetricData{
+		{c.DroppedEvents, prometheus.CounterValue, float64(p.DeadLetterQueue.DroppedEvents), []string{pipelineName}},
+		{c.MaxQueueSizeInBytes, prometheus.CounterValue, float64(p.DeadLetterQueue.MaxQueueSizeInBytes), []string{pipelineName}},
+		{c.DeadLetterQueueSizeInBytes, prometheus.CounterValue, float64(p.DeadLetterQueue.QueueSizeInBytes), []string{pipelineName}},
+	}
 	var inputMetrics, filterMetrics, outputMetrics []pipelineMetricData
 
 	for _, plugin := range p.Plugins.Inputs {
@@ -119,7 +147,7 @@ func (c *PipelinesCollector) collectMetricsForPipeline(pipelineName string, p Pi
 		)
 	}
 
-	for _, m := range append(append(append(append(eventMetrics, queueMetrics...), inputMetrics...), filterMetrics...), outputMetrics...) {
+	for _, m := range append(append(append(append(append(eventMetrics, queueMetrics...), deadLetterQueueMetrics...), inputMetrics...), filterMetrics...), outputMetrics...) {
 		ch <- prometheus.MustNewConstMetric(m.desc, m.valueType, m.value, m.labels...)
 	}
 }
