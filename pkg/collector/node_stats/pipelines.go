@@ -75,8 +75,8 @@ func NewPipelinesCollector() *PipelinesCollector {
 		CapacityPageCapacityInBytes: desc("page_capacity_bytes", "The capacity of a single page in bytes.", "pipeline", "queue_type"),
 		CapacityQueueSizeInBytes:    desc("capacity_queue_size_bytes", "The current size of the queue capacity in bytes.", "pipeline", "queue_type"),
 
-		DroppedEvents:              desc("dropped_events_total", "The total number of dropped events in the dead letter queue.", "pipeline"),
-		MaxQueueSizeInBytes:        desc("max_queue_size_bytes", "The maximum size of the dead letter queue in bytes.", "pipeline"),
+		DroppedEvents:              desc("dead_letter_queue_dropped_events_total", "The total number of dropped events in the dead letter queue.", "pipeline"),
+		MaxQueueSizeInBytes:        desc("dead_letter_queue_max_queue_size_bytes", "The maximum size of the dead letter queue in bytes.", "pipeline"),
 		DeadLetterQueueSizeInBytes: desc("dead_letter_queue_size_bytes", "The current size of the dead letter queue in bytes.", "pipeline"),
 	}
 }
